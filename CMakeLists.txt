@@ -100,5 +100,5 @@ add_shader_file(stereo src/loading.hlsl src/massive.hlsl)
 #add_custom_command(TARGET reuse POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${shaderfile} $<TARGET_FILE_DIR:resources>)
 
 add_custom_command(TARGET resources POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${assets} $<TARGET_FILE_DIR:resources>)
-add_custom_command(TARGET reuse stereo_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${assets} $<TARGET_FILE_DIR:resources>)
+add_custom_command(TARGET stereo POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${assets} $<TARGET_FILE_DIR:resources>)
 add_custom_command(TARGET shadow POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${assets} $<TARGET_FILE_DIR:resources>)
