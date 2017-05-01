@@ -468,8 +468,9 @@ protected:
     void draw_stereo_ovr(ID3D12PipelineState* pso, ID3D12GraphicsCommandList* cmd, int idx)
     {
         vr::VRCompositor()->WaitGetPoses(nullptr, 0, nullptr, 0);
-        ID3D12Resource* p[] = {eye_.rt(0 + idx), eye_.rt(2 + idx) };
-
+		
+        //ID3D12Resource* p[] = {eye_.rt(0 + idx), eye_.rt(2 + idx) };
+        ID3D12Resource* p[] = {eye_.rt(0), eye_.rt(2) };
         auto begin_cmd = [&](ID3D12GraphicsCommandList* cmd, int i) {
             D3D12_RESOURCE_BARRIER barrier_begin = {
                 D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAG_NONE,
@@ -489,8 +490,11 @@ protected:
         stereo_cmd_list_[0]->Reset(stereo_cmd_alloc_[idx][0].Get(), pso);
         stereo_cmd_list_[1]->Reset(stereo_cmd_alloc_[idx][1].Get(), pso);
         
-        D3D12_CPU_DESCRIPTOR_HANDLE rtv[] = {{eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx},
-                                             {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * (2 + idx)}};
+        //D3D12_CPU_DESCRIPTOR_HANDLE rtv[] = {{eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx},
+        //                                   {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * (2 + idx)}};
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv[] = {{eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr},
+                                             {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * 2}};
+
         D3D12_CPU_DESCRIPTOR_HANDLE dsv = {dsv_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart()};
         
         /* シャドウの有無によらずサンプリング完了バリア用コマンドバッファを Reset しておく */
@@ -510,13 +514,6 @@ protected:
                 cmd->RSSetViewports(1, &viewport_);
                 cmd->RSSetScissorRects(1, &scissor_);
                 cmd->OMSetRenderTargets(1, &rtv[i], FALSE, nullptr);
-                D3D12_RESOURCE_BARRIER barrier_begin = {
-                    D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAG_NONE,
-                    {   eye_.rt(idx),
-                        D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        /*D3D12_RESOURCE_STATE_PRESENT | */D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,/* before state */
-                        D3D12_RESOURCE_STATE_RENDER_TARGET /* after state */}};
-                cmd->ResourceBarrier(1, &barrier_begin); /* barrier の desc は長くてつらいがこれを隠蔽したらサンプルの意味がない */
                 cmd->ClearRenderTargetView(rtv[i], col, 0, nullptr);
                 cmd->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
                 loading_->draw(uniq_, cmd);
@@ -534,7 +531,7 @@ protected:
             finishcmd->ResourceBarrier(1, &end);
             
             // shadow pass
-            D3D12_CPU_DESCRIPTOR_HANDLE shadow = {shadow_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().dsv * 0/*idx*/};
+            D3D12_CPU_DESCRIPTOR_HANDLE shadow = {shadow_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr};
             shadowpasscmd->OMSetRenderTargets(0, nullptr, FALSE, &shadow);
             shadowpasscmd->ClearDepthStencilView(shadow, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
             D3D12_VIEWPORT vp = {0.f, 0.f, 1024.f, 1024.f, D3D12_MIN_DEPTH, D3D12_MAX_DEPTH};
@@ -550,7 +547,6 @@ protected:
                     D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                     D3D12_RESOURCE_STATE_DEPTH_WRITE,/* before state */
                     D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE /* after state */}};
-                
             shadowpasscmd->ResourceBarrier(1, &mid);
 
             playing_->set_shadowpass(false);
@@ -558,23 +554,11 @@ protected:
             // Scene Pass
             auto func = [&](ID3D12GraphicsCommandList* cmd, int i) {
                 const float col3[] = {0.6f, 0.6f, 0.6f, 1.f};
-                    
-                D3D12_RESOURCE_BARRIER barrier_begin = {
-                    D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAG_NONE,
-                    {   eye_.rt(idx),
-                        D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,/* before state */
-                        D3D12_RESOURCE_STATE_RENDER_TARGET /* after state */}};
-                cmd->ResourceBarrier(1, &barrier_begin); /* barrier の desc は長くてつらいがこれを隠蔽したらサンプルの意味がない */
-
                 cmd->OMSetRenderTargets(1, &rtv[i], FALSE, &dsv);
-
                 cmd->ClearRenderTargetView(rtv[i], col3, 0, nullptr);
                 cmd->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-                    
                 cmd->RSSetViewports(1, &viewport_);
                 cmd->RSSetScissorRects(1, &scissor_);
-                    
                 playing_->draw(uniq_, cmd);
             };
             func(stereo_cmd_list_[0].Get(), 0);
@@ -587,7 +571,7 @@ protected:
                 {   rt,
                     D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                     D3D12_RESOURCE_STATE_RENDER_TARGET,/* before state */
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE /* after */
                 }};
             cmd->ResourceBarrier(1, &barrier_end);
             cmd->Close();
@@ -597,18 +581,20 @@ protected:
         end_cmd(stereo_cmd_list_[1].Get(), p[1]);
 
         shadowpasscmd->Close();
+
+        /* Final Stage */
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv0 = {rt_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx};
+        draw_sidebyside(rtv0, idx, finishcmd);
+        
         finishcmd->Close();
-            
+		
         auto end = get_clock();
         INF("Build Command Buffer: took: %f(ms)\n", measurement(std::move(begin), std::move(end)));
             
         auto qbegin = get_clock();
-
         PIXBeginEvent(uniq_.queue().Get(), 0, L"execute command");
-        ID3D12CommandList* l[] = {stereo_cmd_list_[0].Get()};
-        ID3D12CommandList* r[] = {stereo_cmd_list_[0].Get(), stereo_cmd_list_[1].Get(), finish_cmd_list_.Get()};
-        //uniq_.queue()->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
-        uniq_.queue()->ExecuteCommandLists(std::extent< decltype(l) >::value, r);
+        ID3D12CommandList* r[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get(), stereo_cmd_list_[0].Get(), stereo_cmd_list_[1].Get(), finish_cmd_list_.Get()};
+        uniq_.queue()->ExecuteCommandLists(std::extent< decltype(r) >::value, r);
         //leftq_->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
         //rightq_->ExecuteCommandLists(std::extent< decltype(r) >::value, r);
         flipper_.wait(uniq_.queue().Get());
@@ -703,7 +689,7 @@ protected:
             finishcmd->ResourceBarrier(1, &end);
             
             // shadow pass
-            D3D12_CPU_DESCRIPTOR_HANDLE shadow = {shadow_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().dsv * 0/*idx*/};
+            D3D12_CPU_DESCRIPTOR_HANDLE shadow = {shadow_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr};
             shadowpasscmd->OMSetRenderTargets(0, nullptr, FALSE, &shadow);
             shadowpasscmd->ClearDepthStencilView(shadow, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
             D3D12_VIEWPORT vp = {0.f, 0.f, 1024.f, 1024.f, D3D12_MIN_DEPTH, D3D12_MAX_DEPTH};
@@ -719,7 +705,6 @@ protected:
                     D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                     D3D12_RESOURCE_STATE_DEPTH_WRITE,/* before state */
                     D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE /* after state */}};
-                
             shadowpasscmd->ResourceBarrier(1, &mid);
 
             playing_->set_shadowpass(false);
@@ -727,14 +712,11 @@ protected:
             // Scene Pass
             auto func = [&](ID3D12GraphicsCommandList* cmd, int i) {
                 const float col3[] = {0.6f, 0.6f, 0.6f, 1.f};
-                    
                 cmd->OMSetRenderTargets(1, &rtv[i], FALSE, &dsv);
                 cmd->ClearRenderTargetView(rtv[i], col3, 0, nullptr);
                 cmd->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-                    
                 cmd->RSSetViewports(1, &viewport_);
                 cmd->RSSetScissorRects(1, &scissor_);
-                    
                 playing_->draw(uniq_, cmd);
             };
             func(stereo_cmd_list_[0].Get(), 0);
@@ -768,7 +750,6 @@ protected:
         INF("Build Command Buffer: took: %f(ms)\n", measurement(std::move(begin), std::move(end)));
             
         auto qbegin = get_clock();
-
         PIXBeginEvent(uniq_.queue().Get(), 0, L"execute command");
 #if defined(USE_OVR)
         //ID3D12CommandList* lists1[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get()};
