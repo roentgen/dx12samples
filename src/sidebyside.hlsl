@@ -3,8 +3,8 @@
  * this code is licensed under the MIT License.
  */
 struct PSInput {
-	float4 position : SV_POSITION;
-	float2 uv : TEXCOORD;
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD;
 };
 
 Texture2D tex[4] : register(t0); /* 0:left-eye 1:right-eye*/
@@ -23,15 +23,15 @@ float4x4 worldmat[2];
 
 PSInput VSMain(float3 position : POSITION, float2 uv : TEXCOORD)
 {
-	PSInput result;
-	result.position = mul(float4(position, 1), worldmat[lr]);
-	result.position = result.position / result.position.w;
-	//result.position = float4(position, 1);
-	result.uv = uv;
-	return result;
+    PSInput result;
+    result.position = mul(float4(position, 1), worldmat[lr]);
+    result.position = result.position / result.position.w;
+    //result.position = float4(position, 1);
+    result.uv = uv;
+    return result;
 }
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-	return tex[lr * 2 + idx].Sample(ssampler, input.uv);
+    return tex[lr * 2 + idx].Sample(ssampler, input.uv);
 }

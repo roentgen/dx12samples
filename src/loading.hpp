@@ -18,24 +18,24 @@
 #include <deque>
 
 struct graphics_impl_t {
-	Microsoft::WRL::ComPtr< ID3D12RootSignature > rootsig_;
-	Microsoft::WRL::ComPtr< ID3D12PipelineState > pso_;
-	Microsoft::WRL::ComPtr< ID3D12DescriptorHeap > descheap_;
+    Microsoft::WRL::ComPtr< ID3D12RootSignature > rootsig_;
+    Microsoft::WRL::ComPtr< ID3D12PipelineState > pso_;
+    Microsoft::WRL::ComPtr< ID3D12DescriptorHeap > descheap_;
 
-	D3D12_VERTEX_BUFFER_VIEW vbv_;
-	Microsoft::WRL::ComPtr< ID3D12Resource > vertbuf_;
-	Microsoft::WRL::ComPtr< ID3D12Resource > cbv_;
-	Microsoft::WRL::ComPtr< ID3D12Resource > tex_;
-	uint64_t time_;
-	int32_t cover_alpha_;
+    D3D12_VERTEX_BUFFER_VIEW vbv_;
+    Microsoft::WRL::ComPtr< ID3D12Resource > vertbuf_;
+    Microsoft::WRL::ComPtr< ID3D12Resource > cbv_;
+    Microsoft::WRL::ComPtr< ID3D12Resource > tex_;
+    uint64_t time_;
+    int32_t cover_alpha_;
 public:
-	graphics_impl_t(): time_(0ULL), cover_alpha_(0) {}
-	void init(uniq_device_t& u,  ID3D12GraphicsCommandList* cmdlist, const std::wstring&, ID3D12Resource*);
-	void update(uniq_device_t& u, uint64_t freq);
-	void draw(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist);
+    graphics_impl_t(): time_(0ULL), cover_alpha_(0) {}
+    void init(uniq_device_t& u,  ID3D12GraphicsCommandList* cmdlist, const std::wstring&, ID3D12Resource*);
+    void update(uniq_device_t& u, uint64_t freq);
+    void draw(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist);
 
-	Microsoft::WRL::ComPtr< ID3D12Resource > create_texture(uniq_device_t& u, int width, int height);
-	Microsoft::WRL::ComPtr< ID3D12PipelineState > get_pso() { return pso_;};
+    Microsoft::WRL::ComPtr< ID3D12Resource > create_texture(uniq_device_t& u, int width, int height);
+    Microsoft::WRL::ComPtr< ID3D12PipelineState > get_pso() { return pso_;};
 };
 
 static const int TRAMPOLINE_MAX_WIDTH = 512;
@@ -49,134 +49,134 @@ int issue_texture_upload(ID3D12GraphicsCommandList* cmdlist, const D3D12_PLACED_
 
 template < typename Next >
 class loading_t : public scene_t {
-	typedef Next next_scene_t;
-	graphics_impl_t impl_;
-	Microsoft::WRL::ComPtr< ID3D12Resource > trampoline_;
+    typedef Next next_scene_t;
+    graphics_impl_t impl_;
+    Microsoft::WRL::ComPtr< ID3D12Resource > trampoline_;
 
-	asset_uploader_t uploader_;
-	queue_sync_object_t< 1 > qsync_;
+    asset_uploader_t uploader_;
+    queue_sync_object_t< 1 > qsync_;
 
-	std::thread loadthr_;
-	std::future< std::weak_ptr< Next > > consumer_;
-	std::atomic< bool > finished_;
-	std::atomic< bool > shutdown_;
-	std::shared_ptr< std::deque< std::wstring > > workq_;
+    std::thread loadthr_;
+    std::future< std::weak_ptr< Next > > consumer_;
+    std::atomic< bool > finished_;
+    std::atomic< bool > shutdown_;
+    std::shared_ptr< std::deque< std::wstring > > workq_;
 public:
-	loading_t(std::shared_ptr< std::deque< std::wstring > > workq) : finished_(false), shutdown_(false), workq_(std::move(workq)) {}
-	void set_consumer(std::future< std::weak_ptr< Next > > weakref) { consumer_ = std::move(weakref); }
-	
-	void init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, const std::wstring& basepath)
-	{
-		/* Load Loading Screen */
+    loading_t(std::shared_ptr< std::deque< std::wstring > > workq) : finished_(false), shutdown_(false), workq_(std::move(workq)) {}
+    void set_consumer(std::future< std::weak_ptr< Next > > weakref) { consumer_ = std::move(weakref); }
+    
+    void init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, const std::wstring& basepath)
+    {
+        /* Load Loading Screen */
 
-		uploader_.create_uploader(u);
-		
-		ComPtr< ID3D12GraphicsCommandList > copycmdlist;
-		/* upload ‚Ì‚½‚ß‚Ì cmdlist ‚É‚Í PSO ‚Í•K—v‚Å‚Í‚È‚¢ */
-		u.dev()->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, uploader_.allocator().Get(), nullptr/*pso_.Get()*/, IID_PPV_ARGS(&copycmdlist));
-		NAME_OBJ2(copycmdlist, L"cmdlist(upload)");
+        uploader_.create_uploader(u);
+        
+        ComPtr< ID3D12GraphicsCommandList > copycmdlist;
+        /* upload ã®ãŸã‚ã® cmdlist ã«ã¯ PSO ã¯å¿…è¦ã§ã¯ãªã„ */
+        u.dev()->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, uploader_.allocator().Get(), nullptr/*pso_.Get()*/, IID_PPV_ARGS(&copycmdlist));
+        NAME_OBJ2(copycmdlist, L"cmdlist(upload)");
 
-		{
-			/* trampoline buffer ‚Ìì¬: 
-			   ƒgƒ‰ƒ“ƒ|ƒŠƒ“ƒoƒbƒtƒ@‚Í D3D12_HEAP_TYPE_UPLOAD (CPU ‘¤ TLB ‚É Map ‰Â”\). CPU ‚©‚ç‘‚«‚İ, COPY ƒRƒ}ƒ“ƒh‚Å VRAM ‚Ìí’“ƒq[ƒv‚ÉƒRƒs[‚·‚é.
-			   bufsize ‚Í“K“–‚È‘å‚«‚³. •K‚¸‚µ‚àƒeƒNƒXƒ`ƒƒ‚Æ“¯‚¶‘å‚«‚³‚Å‚ ‚é•K—v‚Í‚È‚­“K“–‚É 1MB ‚Æ‚©‚Å‚à‚æ‚¢‚ª
-			   Mipmap ‚â 3D texture ‚Ì stride alignment ‚È‚Ç‚ğl—¶‚·‚é‚Ì‚ª–Ê“|‚È‚Ì‚Å footprint ‚ğƒNƒGƒŠ‚·‚é. */
-			D3D12_RESOURCE_DESC tmp = setup_tex2d(TRAMPOLINE_MAX_WIDTH, TRAMPOLINE_MAX_HEIGHT);
-			
-			size_t bufsize;
-			u.dev()->GetCopyableFootprints(&tmp, 0, 1, 0, nullptr, nullptr, nullptr, &bufsize);
-			INF("create trampoline buffer for texture: required:%lld\n", bufsize);
-			
-			auto upload = setup_heapprop(D3D12_HEAP_TYPE_UPLOAD);
-			D3D12_RESOURCE_DESC buf = setup_buffer(bufsize);
-			auto hr = u.dev()->CreateCommittedResource(&upload, D3D12_HEAP_FLAG_NONE, &buf, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&trampoline_));
-			if (FAILED(hr)) {
-				ABT("failed to create trampoline buffer: err:0x%x\n", hr);
-			}
-		}
+        {
+            /* trampoline buffer ã®ä½œæˆ: 
+               ãƒˆãƒ©ãƒ³ãƒãƒªãƒ³ãƒãƒƒãƒ•ã‚¡ã¯ D3D12_HEAP_TYPE_UPLOAD (CPU å´ TLB ã« Map å¯èƒ½). CPU ã‹ã‚‰æ›¸ãè¾¼ã¿, COPY ã‚³ãƒãƒ³ãƒ‰ã§ VRAM ã®å¸¸é§ãƒ’ãƒ¼ãƒ—ã«ã‚³ãƒ”ãƒ¼ã™ã‚‹.
+               bufsize ã¯é©å½“ãªå¤§ãã•. å¿…ãšã—ã‚‚ãƒ†ã‚¯ã‚¹ãƒãƒ£ã¨åŒã˜å¤§ãã•ã§ã‚ã‚‹å¿…è¦ã¯ãªãé©å½“ã« 1MB ã¨ã‹ã§ã‚‚ã‚ˆã„ãŒ
+               Mipmap ã‚„ 3D texture ã® stride alignment ãªã©ã‚’è€ƒæ…®ã™ã‚‹ã®ãŒé¢å€’ãªã®ã§ footprint ã‚’ã‚¯ã‚¨ãƒªã™ã‚‹. */
+            D3D12_RESOURCE_DESC tmp = setup_tex2d(TRAMPOLINE_MAX_WIDTH, TRAMPOLINE_MAX_HEIGHT);
+            
+            size_t bufsize;
+            u.dev()->GetCopyableFootprints(&tmp, 0, 1, 0, nullptr, nullptr, nullptr, &bufsize);
+            INF("create trampoline buffer for texture: required:%lld\n", bufsize);
+            
+            auto upload = setup_heapprop(D3D12_HEAP_TYPE_UPLOAD);
+            D3D12_RESOURCE_DESC buf = setup_buffer(bufsize);
+            auto hr = u.dev()->CreateCommittedResource(&upload, D3D12_HEAP_FLAG_NONE, &buf, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&trampoline_));
+            if (FAILED(hr)) {
+                ABT("failed to create trampoline buffer: err:0x%x\n", hr);
+            }
+        }
 
-		/* FIXME: ‚±‚ÌƒRƒ“ƒeƒLƒXƒg‚Å‚Í copy —p‚ÌƒRƒ}ƒ“ƒhƒoƒbƒtƒ@‚ğg‚í‚È‚­‚µ‚¢‚Ù‚¤‚ª³‚µ‚¢‚ªA
-		   ‚»‚Ìê‡‚±‚ÌƒRƒ“ƒeƒLƒXƒg‚Å trampoline ƒoƒbƒtƒ@‚ğg‚¢‚Ü‚í‚µ‚Ä‚Í‚¢‚¯‚È‚¢‚æ‚¤‚É‚È‚é‚Ì‚Å copy engine ‚ÌƒRƒ}ƒ“ƒhƒoƒbƒtƒ@‚ğg‚¤‚±‚Æ‚É‚µ‚½ */
-		//impl_.init(u, cmdlist, basepath, trampoline_.Get());
-		impl_.init(u, copycmdlist.Get(), basepath, trampoline_.Get());
-		
-		Microsoft::WRL::ComPtr< ID3D12Fence > fence;
-		u.dev()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
-		qsync_.init(std::move(fence), 0);
-		
-		/* Šy‚É move capture ‚ªg‚¢‚½‚¢‚È‚Ÿ */
-		auto payload = std::make_shared< std::vector< Microsoft::WRL::ComPtr< ID3D12Resource > > >();
-		
-		copycmdlist->Close();
-		
-		qsync_.incr(); /* wait ready */
-		qsync_.wait(uploader_.queue().Get());
-		
-		ID3D12CommandList* l[] = {copycmdlist.Get()};
-		uploader_.queue()->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
-		qsync_.wait(uploader_.queue().Get());
-		
-		finished_ = true;
-		
-		loadthr_ = std::thread([&, payload, copycmdlist]{
-				while (!shutdown_ && !workq_->empty()) {
-					auto wi = workq_->front();
-					workq_->pop_front();
-					int w, h;
-					auto data = load_graphics_asset(wi, w, h);
-					if (!data.size())
-						continue;
-					INF("Load texture: %s w:%d h:%d\n", wi.c_str(), w, h);
-					
-					Sleep(1000); /* Loading Screen ‚Á‚Û‚­‚à‚Á‚½‚¢‚Â‚¯‚é */
-					uploader_.allocator()->Reset();
-					auto hr = copycmdlist->Reset(uploader_.allocator().Get(), nullptr);
-					if (FAILED(hr)) {
-						ABT("failed to reset copycmdlist:0x%x\n", hr);
-					}
-					
-					auto tex = impl_.create_texture(u, w, h);
-					auto copied = write_to_trampoline(u, std::move(data), tex->GetDesc(), trampoline_.Get()); /* copy to trampoline */
-					issue_texture_upload(copycmdlist.Get(), copied, tex.Get(), trampoline_.Get());
-					copycmdlist->Close();
-					
-					ID3D12CommandList* l[] = {copycmdlist.Get()};
-					uploader_.queue()->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
-					qsync_.wait(uploader_.queue().Get());
-					
-					payload->push_back(std::move(tex));
-				}
-				
-				auto p = consumer_.get().lock();
-				if (p) {
-					p->set_payload(u, std::move(payload));
-				}
-				finished_ = false;
-			});
+        /* FIXME: ã“ã®ã‚³ãƒ³ãƒ†ã‚­ã‚¹ãƒˆã§ã¯ copy ç”¨ã®ã‚³ãƒãƒ³ãƒ‰ãƒãƒƒãƒ•ã‚¡ã‚’ä½¿ã‚ãªãã—ã„ã»ã†ãŒæ­£ã—ã„ãŒã€
+           ãã®å ´åˆã“ã®ã‚³ãƒ³ãƒ†ã‚­ã‚¹ãƒˆã§ trampoline ãƒãƒƒãƒ•ã‚¡ã‚’ä½¿ã„ã¾ã‚ã—ã¦ã¯ã„ã‘ãªã„ã‚ˆã†ã«ãªã‚‹ã®ã§ copy engine ã®ã‚³ãƒãƒ³ãƒ‰ãƒãƒƒãƒ•ã‚¡ã‚’ä½¿ã†ã“ã¨ã«ã—ãŸ */
+        //impl_.init(u, cmdlist, basepath, trampoline_.Get());
+        impl_.init(u, copycmdlist.Get(), basepath, trampoline_.Get());
+        
+        Microsoft::WRL::ComPtr< ID3D12Fence > fence;
+        u.dev()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+        qsync_.init(std::move(fence), 0);
+        
+        /* æ¥½ã« move capture ãŒä½¿ã„ãŸã„ãªã */
+        auto payload = std::make_shared< std::vector< Microsoft::WRL::ComPtr< ID3D12Resource > > >();
+        
+        copycmdlist->Close();
+        
+        qsync_.incr(); /* wait ready */
+        qsync_.wait(uploader_.queue().Get());
+        
+        ID3D12CommandList* l[] = {copycmdlist.Get()};
+        uploader_.queue()->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
+        qsync_.wait(uploader_.queue().Get());
+        
+        finished_ = true;
+        
+        loadthr_ = std::thread([&, payload, copycmdlist]{
+                while (!shutdown_ && !workq_->empty()) {
+                    auto wi = workq_->front();
+                    workq_->pop_front();
+                    int w, h;
+                    auto data = load_graphics_asset(wi, w, h);
+                    if (!data.size())
+                        continue;
+                    INF("Load texture: %s w:%d h:%d\n", wi.c_str(), w, h);
+                    
+                    Sleep(1000); /* Loading Screen ã£ã½ãã‚‚ã£ãŸã„ã¤ã‘ã‚‹ */
+                    uploader_.allocator()->Reset();
+                    auto hr = copycmdlist->Reset(uploader_.allocator().Get(), nullptr);
+                    if (FAILED(hr)) {
+                        ABT("failed to reset copycmdlist:0x%x\n", hr);
+                    }
+                    
+                    auto tex = impl_.create_texture(u, w, h);
+                    auto copied = write_to_trampoline(u, std::move(data), tex->GetDesc(), trampoline_.Get()); /* copy to trampoline */
+                    issue_texture_upload(copycmdlist.Get(), copied, tex.Get(), trampoline_.Get());
+                    copycmdlist->Close();
+                    
+                    ID3D12CommandList* l[] = {copycmdlist.Get()};
+                    uploader_.queue()->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
+                    qsync_.wait(uploader_.queue().Get());
+                    
+                    payload->push_back(std::move(tex));
+                }
+                
+                auto p = consumer_.get().lock();
+                if (p) {
+                    p->set_payload(u, std::move(payload));
+                }
+                finished_ = false;
+            });
 
-	}
-	void update(uniq_device_t& u, uint64_t freq)
-	{
-		impl_.update(u, freq);
-	}
-	void draw(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist)
-	{
-		impl_.draw(u, cmdlist);
-	}
-	bool is_ready()
-	{
-		return finished_;
-	}
+    }
+    void update(uniq_device_t& u, uint64_t freq)
+    {
+        impl_.update(u, freq);
+    }
+    void draw(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist)
+    {
+        impl_.draw(u, cmdlist);
+    }
+    bool is_ready()
+    {
+        return finished_;
+    }
 
-	Microsoft::WRL::ComPtr< ID3D12PipelineState > get_pso() { return impl_.pso_;};
+    Microsoft::WRL::ComPtr< ID3D12PipelineState > get_pso() { return impl_.pso_;};
 
-	void shutdown()
-	{
-		if (loadthr_.joinable()) {
-			shutdown_ = true;
-			loadthr_.join();
-		}
-	}
+    void shutdown()
+    {
+        if (loadthr_.joinable()) {
+            shutdown_ = true;
+            loadthr_.join();
+        }
+    }
 };
 
 

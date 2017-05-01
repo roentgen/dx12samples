@@ -4,9 +4,9 @@
  */
 struct PSInput
 {
-	float4 position : SV_POSITION;
-	float2 uv : TEXCOORD;
-	float4 pos : PROJ_POS;
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD;
+    float4 pos : PROJ_POS;
 };
 
 Texture2D< float > shadow_texture : register(t0);
@@ -39,22 +39,22 @@ float4x4 lightproj;
 
 PSInput VSMain(float3 position : POSITION, float2 uv : TEXCOORD, float3 nrm : NORMAL)
 {
-	PSInput result;
-	result.position = mul(float4(position, 1), modelmat);
-	result.position = mul(result.position, transpose(lightviewmat));
-	
-	result.position = mul(result.position, transpose(lightproj));
-	result.position = result.position / result.position.w;
-	//result.pos = float4(position, 1);
+    PSInput result;
+    result.position = mul(float4(position, 1), modelmat);
+    result.position = mul(result.position, transpose(lightviewmat));
+    
+    result.position = mul(result.position, transpose(lightproj));
+    result.position = result.position / result.position.w;
+    //result.pos = float4(position, 1);
 
-	//result.position = float4(position, 1);
-	result.uv = uv;
-	result.pos = result.position;
-	return result;
+    //result.position = float4(position, 1);
+    result.uv = uv;
+    result.pos = result.position;
+    return result;
 }
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-	return float4(input.pos.z, 1.0f, input.pos.z, 1.f);
+    return float4(input.pos.z, 1.0f, input.pos.z, 1.f);
 }
 

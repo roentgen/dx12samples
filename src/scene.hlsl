@@ -4,10 +4,10 @@
  */
 struct PSInput
 {
-	float4 position : SV_POSITION;
-	float2 uv : TEXCOORD;
-	float3 norm : NORMAL;
-	float4 worldposition : POSITION;
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD;
+    float3 norm : NORMAL;
+    float4 worldposition : POSITION;
 };
 
 static float3 lightpos = {-2.f, 5.f, 0.0f};
@@ -43,38 +43,38 @@ float4x4 lightproj;
 
 PSInput VSMain(float3 position : POSITION, float2 uv : TEXCOORD, float3 nrm : NORMAL)
 {
-	PSInput result;
-	
-	result.position = mul(float4(position, 1), modelmat);
-	result.worldposition = result.position;
-	result.norm = normalize(mul(float4(nrm, 1), modelmat));
-	result.position = mul(result.position, transpose(viewmat));
-	result.position = mul(result.position, transpose(proj));
-	result.position = result.position / result.position.w;
-	/* for defined CHECK_DEPTH_BUFFER */
-	//result.position = float4(position, 1);
-	result.uv = uv;
-	return result;
+    PSInput result;
+    
+    result.position = mul(float4(position, 1), modelmat);
+    result.worldposition = result.position;
+    result.norm = normalize(mul(float4(nrm, 1), modelmat));
+    result.position = mul(result.position, transpose(viewmat));
+    result.position = mul(result.position, transpose(proj));
+    result.position = result.position / result.position.w;
+    /* for defined CHECK_DEPTH_BUFFER */
+    //result.position = float4(position, 1);
+    result.uv = uv;
+    return result;
 }
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-	float4 pos_shadowcoord = input.worldposition;
-	pos_shadowcoord = mul(pos_shadowcoord, transpose(lightviewmat));
-	pos_shadowcoord = mul(pos_shadowcoord, transpose(lightproj));
-	pos_shadowcoord = pos_shadowcoord / pos_shadowcoord.w;
+    float4 pos_shadowcoord = input.worldposition;
+    pos_shadowcoord = mul(pos_shadowcoord, transpose(lightviewmat));
+    pos_shadowcoord = mul(pos_shadowcoord, transpose(lightproj));
+    pos_shadowcoord = pos_shadowcoord / pos_shadowcoord.w;
 
-	float2 suv = pos_shadowcoord.xy;
-	suv = suv * 0.5f + float2(0.5f, 0.5f); // lightspace-proj(-1,-1,0)-(1,1,1) remap to UV(0,0)-(1,1)
-	suv.y = 1.f - suv.y;
-	
-	/* if defined CHECK_DEPTH_BUFFER */
-	//suv = input.uv;
+    float2 suv = pos_shadowcoord.xy;
+    suv = suv * 0.5f + float2(0.5f, 0.5f); // lightspace-proj(-1,-1,0)-(1,1,1) remap to UV(0,0)-(1,1)
+    suv.y = 1.f - suv.y;
+    
+    /* if defined CHECK_DEPTH_BUFFER */
+    //suv = input.uv;
 
-	float depth = shadow_texture.Sample(ssampler, suv);
-	float k = (depth > (pos_shadowcoord.z - 0.001f)) ? 1.0f : 0.f;
+    float depth = shadow_texture.Sample(ssampler, suv);
+    float k = (depth > (pos_shadowcoord.z - 0.001f)) ? 1.0f : 0.f;
 
-	float4 col = color_texture.Sample(ssampler, input.uv);
-	float f = dot(input.norm, normalize(lightpos - input.worldposition));
-	return float4(col.xyz * f * (k + 0.2f), 1);
+    float4 col = color_texture.Sample(ssampler, input.uv);
+    float f = dot(input.norm, normalize(lightpos - input.worldposition));
+    return float4(col.xyz * f * (k + 0.2f), 1);
 }
