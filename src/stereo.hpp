@@ -170,6 +170,7 @@ class stereo_t : public appbase_t {
 
 #if defined(USE_OVR)
     vr::IVRSystem* vrsystem_;
+	vr::IVRRenderModels* rendermodels_;
     buffered_render_target_t< 4 > eye_;
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > leftq_;
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > rightq_;
@@ -322,6 +323,12 @@ public:
             else if (hmderr == vr::VRInitError_Init_HmdNotFound) {
                 ABTMSG("HMD not found .\n");
             }
+			rendermodels_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &hmderr);
+			if (!rendermodels_) {
+				vrsystem_ = nullptr;
+				vr::VR_Shutdown();
+				ABT("Failed to get generic interface: %d\n", hmderr);
+			}
 #endif
             
             ComPtr< ID3D12Resource > ovr_rtv[offscreen_buffers_ * 2];
@@ -449,7 +456,7 @@ protected:
             cmd_list_->Close();
             /* FIXME: 最終段の RT 以外は一本化できる(USE_OVR は別)  */
 #if defined(USE_OVR) && !defined(DUMMY_OVR)
-            draw_stereo_ovr(pso);
+            draw_stereo_ovr(pso, idx);
 #else
             draw_stereo_no_ovr(pso, idx);
 #endif
@@ -465,9 +472,11 @@ protected:
     }
 
 #if defined(USE_OVR)
-    void draw_stereo_ovr(ID3D12PipelineState* pso, ID3D12GraphicsCommandList* cmd, int idx)
+    void draw_stereo_ovr(ID3D12PipelineState* pso, int idx)
     {
-        vr::VRCompositor()->WaitGetPoses(nullptr, 0, nullptr, 0);
+		vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount];
+        //vr::VRCompositor()->WaitGetPoses(poses, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
+		vr::VRCompositor()->WaitGetPoses(nullptr, 0, nullptr, 0);
 		
         //ID3D12Resource* p[] = {eye_.rt(0 + idx), eye_.rt(2 + idx) };
         ID3D12Resource* p[] = {eye_.rt(0), eye_.rt(2) };
@@ -582,7 +591,7 @@ protected:
 
         shadowpasscmd->Close();
 
-        /* Final Stage */
+        /* Final Stage: (non mandatory) */
         D3D12_CPU_DESCRIPTOR_HANDLE rtv0 = {rt_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx};
         draw_sidebyside(rtv0, idx, finishcmd);
         
@@ -593,15 +602,16 @@ protected:
             
         auto qbegin = get_clock();
         PIXBeginEvent(uniq_.queue().Get(), 0, L"execute command");
-        ID3D12CommandList* r[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get(), stereo_cmd_list_[0].Get(), stereo_cmd_list_[1].Get(), finish_cmd_list_.Get()};
-        uniq_.queue()->ExecuteCommandLists(std::extent< decltype(r) >::value, r);
+        ID3D12CommandList* list[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get(), stereo_cmd_list_[0].Get(), stereo_cmd_list_[1].Get(), finish_cmd_list_.Get()};
+        uniq_.queue()->ExecuteCommandLists(std::extent< decltype(list) >::value, list);
+
+		/* left/right に command queue を渡してはいるが、明示的に何かのコマンドを詰む必要はなさそうだ. */
         //leftq_->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
         //rightq_->ExecuteCommandLists(std::extent< decltype(r) >::value, r);
-        flipper_.wait(uniq_.queue().Get());
-        vr::D3D12TextureData_t left = {eye_.rt(0 + idx), leftq_.Get(), 0};
-        vr::D3D12TextureData_t right = {eye_.rt(2 + idx), rightq_.Get(), 0};
-        //flipper_.wait(leftq_.Get());
-        //flipper_.wait(rightq_.Get());
+        //vr::D3D12TextureData_t left = {eye_.rt(0 + idx), leftq_.Get(), 0};
+        //vr::D3D12TextureData_t right = {eye_.rt(2 + idx), rightq_.Get(), 0};
+        vr::D3D12TextureData_t left = {eye_.rt(0), leftq_.Get(), 0};
+        vr::D3D12TextureData_t right = {eye_.rt(2), rightq_.Get(), 0};
         vr::VRTextureBounds_t bounds;
         bounds.uMin = 0.0f;
         bounds.uMax = 1.0f;
@@ -614,14 +624,23 @@ protected:
         PIXEndEvent(uniq_.queue().Get());
 
         auto qmid = get_clock();
+		/* flip をするかしないかは任意. ただし GPU を待つ必要はある.
+		   つまり OpenVR は自分では GPU 同期をしないようだ. 
+		   アプリケーションでの ExecuteCommandLists() の呼び出しや同期と IVRCompositor::Submit との前後関係は不明.
+		   SwapChain での Flip をするかどうかはともかく、 SwapChain が同期するクロックが支配的ということになるので
+		   eye RT だけを double buffering する方法もおそらくなさそう -> eye RT は unbuffered とする */
+#if 1
+		/* non mandatory: HMD がないときに画面が真っ白になるので SideBySide を表示しておく. 必須ではない */
         if (!flipper_.flip(uniq_.queue().Get(), uniq_.swapchain().Get(), true)) {
             auto hr = uniq_.dev()->GetDeviceRemovedReason();
             ABT("flip failed due to error: 0x%x\n", hr);
             DebugBreak();
         }
+#else
+		flipper_.wait(uniq_.queue().Get());
+#endif
         auto qend = get_clock();
         INF("Flip and sync: took: Submit:%f Wait:%f Total:%f(ms)\n", measurement(qbegin, qmid), measurement(qmid, qend), measurement(qbegin, qend));
-
     }
 #endif
     
