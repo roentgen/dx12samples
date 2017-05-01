@@ -191,7 +191,7 @@ protected:
         ComPtr<ID3DBlob> error;
         D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc = {};
         desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
-        desc.Desc_1_1.NumParameters = _countof(params);
+        desc.Desc_1_1.NumParameters = std::extent< decltype(params) >::value;
         desc.Desc_1_1.pParameters = params;
         desc.Desc_1_1.NumStaticSamplers = 1;
         desc.Desc_1_1.pStaticSamplers = &sampler;

@@ -72,7 +72,7 @@ void simple_t::load_asset()
         };
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
-        desc.InputLayout = {input_descs, _countof(input_descs)};
+        desc.InputLayout = {input_descs, std::extent< decltype(input_descs) >::value};
         desc.pRootSignature = rootsig_.Get();
         desc.VS = vsbytes;
         desc.PS = psbytes;

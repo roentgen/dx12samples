@@ -20,7 +20,6 @@
 #include "scene.hpp"
 #include "loading.hpp"
 
-#define USE_OVR
 #define DUMMY_OVR
 
 #if defined(USE_OVR)
