@@ -235,7 +235,7 @@ void stereo_t::load_asset()
             };
             volatile uint8_t* ptr = nullptr;
             D3D12_RANGE readrange = {0, 0};
-            cbv_->Map(0, &readrange, reinterpret_cast< void** >(&const_cast< uint8_t* >(ptr)));
+            cbv_->Map(0, &readrange, reinterpret_cast< void** >(const_cast< uint8_t** >(&ptr)));
             memcpy(const_cast< uint8_t* >(ptr), matrix, sizeof(float) * 16);
             memcpy(const_cast< uint8_t* >(ptr) + sizeof(float) * 16, &matrix[1], sizeof(float) * 16);
             //memcpy(const_cast< uint8_t* >(ptr) + aligned * 2, &matrix[2], sizeof(float) * 16);
