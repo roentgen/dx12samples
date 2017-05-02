@@ -20,6 +20,7 @@
 #include "scene.hpp"
 #include "loading.hpp"
 
+/* override USE_OVR configuration */
 #define DUMMY_OVR
 
 #if defined(USE_OVR)
@@ -170,7 +171,7 @@ class stereo_t : public appbase_t {
 
 #if defined(USE_OVR)
     vr::IVRSystem* vrsystem_;
-	vr::IVRRenderModels* rendermodels_;
+    vr::IVRRenderModels* rendermodels_;
     buffered_render_target_t< 4 > eye_;
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > leftq_;
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > rightq_;
@@ -323,12 +324,12 @@ public:
             else if (hmderr == vr::VRInitError_Init_HmdNotFound) {
                 ABTMSG("HMD not found .\n");
             }
-			rendermodels_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &hmderr);
-			if (!rendermodels_) {
-				vrsystem_ = nullptr;
-				vr::VR_Shutdown();
-				ABT("Failed to get generic interface: %d\n", hmderr);
-			}
+            rendermodels_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &hmderr);
+            if (!rendermodels_) {
+                vrsystem_ = nullptr;
+                vr::VR_Shutdown();
+                ABT("Failed to get generic interface: %d\n", hmderr);
+            }
 #endif
             
             ComPtr< ID3D12Resource > ovr_rtv[offscreen_buffers_ * 2];
@@ -454,12 +455,59 @@ protected:
                 DebugBreak();
             }
             cmd_list_->Close();
+
             /* FIXME: 最終段の RT 以外は一本化できる(USE_OVR は別)  */
+            stereo_cmd_alloc_[idx][0]->Reset();
+            stereo_cmd_alloc_[idx][1]->Reset();
+            stereo_cmd_list_[0]->Reset(stereo_cmd_alloc_[idx][0].Get(), pso);
+            stereo_cmd_list_[1]->Reset(stereo_cmd_alloc_[idx][1].Get(), pso);
+
+            auto begin = get_clock();
 #if defined(USE_OVR) && !defined(DUMMY_OVR)
-            draw_stereo_ovr(pso, idx);
-#else
-            draw_stereo_no_ovr(pso, idx);
+            vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount];
+            //vr::VRCompositor()->WaitGetPoses(poses, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
+            vr::VRCompositor()->WaitGetPoses(nullptr, 0, nullptr, 0);
 #endif
+            draw_stereo(idx, true);
+
+            auto end = get_clock();
+            INF("Build Command Buffer: took: %f(ms)\n", measurement(std::move(begin), std::move(end)));
+
+            auto qbegin = get_clock();
+            PIXBeginEvent(uniq_.queue().Get(), 0, L"execute command");
+            ID3D12CommandList* list[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get(), stereo_cmd_list_[0].Get(), stereo_cmd_list_[1].Get(), finish_cmd_list_.Get()};
+            uniq_.queue()->ExecuteCommandLists(std::extent< decltype(list) >::value, list);
+
+#if defined(USE_OVR) && !defined(DUMMY_OVR)
+            /* left/right に command queue を渡してはいるが、明示的に何かのコマンドを詰む必要はなさそうだ. */
+            vr::D3D12TextureData_t left = {eye_.rt(0), leftq_.Get(), 0};
+            vr::D3D12TextureData_t right = {eye_.rt(2), rightq_.Get(), 0};
+            vr::VRTextureBounds_t bounds = {/* uvmin */0.f, 0.f, /* uvmax */1.f, 1.f};
+            vr::Texture_t lt = {&left, vr::TextureType_DirectX12, vr::ColorSpace_Gamma};
+            vr::Texture_t rt = {&right, vr::TextureType_DirectX12, vr::ColorSpace_Gamma};
+            vr::VRCompositor()->Submit(vr::Eye_Left, &lt, &bounds, vr::Submit_Default);
+            vr::VRCompositor()->Submit(vr::Eye_Right, &rt, &bounds, vr::Submit_Default);
+#endif
+                        
+            PIXEndEvent(uniq_.queue().Get());
+            auto qmid = get_clock();
+            /* flip をするかしないかは任意. ただし GPU を待つ必要はある.
+               つまり OpenVR は自分では GPU 同期をしないようだ. 
+               アプリケーションでの ExecuteCommandLists() の呼び出しや同期と IVRCompositor::Submit との前後関係は不明.
+               SwapChain での Flip をするかどうかはともかく、 SwapChain が同期するクロックが支配的ということになるので
+               eye RT だけを double buffering する方法もおそらくなさそう -> eye RT は unbuffered とする */
+#if 1
+            /* non mandatory: HMD がないときに画面が真っ白になるので SideBySide を表示しておく. HMD が使えるときは必須ではない */
+            if (!flipper_.flip(uniq_.queue().Get(), uniq_.swapchain().Get(), true)) {
+                auto hr = uniq_.dev()->GetDeviceRemovedReason();
+                ABT("flip failed due to error: 0x%x\n", hr);
+                DebugBreak();
+            }
+#else
+            flipper_.wait(uniq_.queue().Get());
+#endif
+            auto qend = get_clock();
+            INF("Flip and sync: took: Submit:%f Wait:%f Total:%f(ms)\n", measurement(qbegin, qmid), measurement(qmid, qend), measurement(qbegin, qend));
         }
         catch (_com_error& ex) {
             ABT("_com_error was occured\n", TEXT(__FUNCTION__));
@@ -471,13 +519,8 @@ protected:
         DBG("     %s --->\n", TEXT(__FUNCTION__));
     }
 
-#if defined(USE_OVR)
-    void draw_stereo_ovr(ID3D12PipelineState* pso, int idx)
+    void draw_stereo(int idx, bool use_sidebyside)
     {
-		vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount];
-        //vr::VRCompositor()->WaitGetPoses(poses, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
-		vr::VRCompositor()->WaitGetPoses(nullptr, 0, nullptr, 0);
-		
         //ID3D12Resource* p[] = {eye_.rt(0 + idx), eye_.rt(2 + idx) };
         ID3D12Resource* p[] = {eye_.rt(0), eye_.rt(2) };
         auto begin_cmd = [&](ID3D12GraphicsCommandList* cmd, int i) {
@@ -493,11 +536,6 @@ protected:
         begin_cmd(pre_cmd_list_.Get(), 1);
         
         pre_cmd_list_->Close();
-        
-        stereo_cmd_alloc_[idx][0]->Reset();
-        stereo_cmd_alloc_[idx][1]->Reset();
-        stereo_cmd_list_[0]->Reset(stereo_cmd_alloc_[idx][0].Get(), pso);
-        stereo_cmd_list_[1]->Reset(stereo_cmd_alloc_[idx][1].Get(), pso);
         
         //D3D12_CPU_DESCRIPTOR_HANDLE rtv[] = {{eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx},
         //                                   {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * (2 + idx)}};
@@ -515,7 +553,6 @@ protected:
         shadowpass_cmd_list_->Reset(shadowpass_cmd_alloc_[idx].Get(), nullptr);
         auto shadowpasscmd = shadowpass_cmd_list_.Get();
         
-        auto begin = get_clock();
         const float col[] = {0.1f, 0.1f, 0.1f, 1.f};
         /* recording draw commands */
         if (loading_->is_ready()) {
@@ -547,7 +584,7 @@ protected:
             D3D12_RECT scissor = {0, 0, 1024, 1024};
             shadowpasscmd->RSSetViewports(1, &vp); /* viewport を大きくする GPU が死ぬ */
             shadowpasscmd->RSSetScissorRects(1, &scissor);
-                
+
             playing_->draw_shadowpass(uniq_, shadowpasscmd);
 
             D3D12_RESOURCE_BARRIER mid = {
@@ -559,7 +596,7 @@ protected:
             shadowpasscmd->ResourceBarrier(1, &mid);
 
             playing_->set_shadowpass(false);
-                
+            
             // Scene Pass
             auto func = [&](ID3D12GraphicsCommandList* cmd, int i) {
                 const float col3[] = {0.6f, 0.6f, 0.6f, 1.f};
@@ -592,210 +629,14 @@ protected:
         shadowpasscmd->Close();
 
         /* Final Stage: (non mandatory) */
-        D3D12_CPU_DESCRIPTOR_HANDLE rtv0 = {rt_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx};
-        draw_sidebyside(rtv0, idx, finishcmd);
+        if (use_sidebyside) {
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv0 = {rt_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx};
+            draw_sidebyside(rtv0, idx, finishcmd);
+        }
         
         finishcmd->Close();
-		
-        auto end = get_clock();
-        INF("Build Command Buffer: took: %f(ms)\n", measurement(std::move(begin), std::move(end)));
-            
-        auto qbegin = get_clock();
-        PIXBeginEvent(uniq_.queue().Get(), 0, L"execute command");
-        ID3D12CommandList* list[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get(), stereo_cmd_list_[0].Get(), stereo_cmd_list_[1].Get(), finish_cmd_list_.Get()};
-        uniq_.queue()->ExecuteCommandLists(std::extent< decltype(list) >::value, list);
-
-		/* left/right に command queue を渡してはいるが、明示的に何かのコマンドを詰む必要はなさそうだ. */
-        //leftq_->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
-        //rightq_->ExecuteCommandLists(std::extent< decltype(r) >::value, r);
-        //vr::D3D12TextureData_t left = {eye_.rt(0 + idx), leftq_.Get(), 0};
-        //vr::D3D12TextureData_t right = {eye_.rt(2 + idx), rightq_.Get(), 0};
-        vr::D3D12TextureData_t left = {eye_.rt(0), leftq_.Get(), 0};
-        vr::D3D12TextureData_t right = {eye_.rt(2), rightq_.Get(), 0};
-        vr::VRTextureBounds_t bounds;
-        bounds.uMin = 0.0f;
-        bounds.uMax = 1.0f;
-        bounds.vMin = 0.0f;
-        bounds.vMax = 1.0f;
-        vr::Texture_t lt = {&left, vr::TextureType_DirectX12, vr::ColorSpace_Gamma};
-        vr::Texture_t rt = {&right, vr::TextureType_DirectX12, vr::ColorSpace_Gamma};
-        vr::VRCompositor()->Submit(vr::Eye_Left, &lt, &bounds, vr::Submit_Default);
-        vr::VRCompositor()->Submit(vr::Eye_Right, &rt, nullptr, vr::Submit_Default);
-        PIXEndEvent(uniq_.queue().Get());
-
-        auto qmid = get_clock();
-		/* flip をするかしないかは任意. ただし GPU を待つ必要はある.
-		   つまり OpenVR は自分では GPU 同期をしないようだ. 
-		   アプリケーションでの ExecuteCommandLists() の呼び出しや同期と IVRCompositor::Submit との前後関係は不明.
-		   SwapChain での Flip をするかどうかはともかく、 SwapChain が同期するクロックが支配的ということになるので
-		   eye RT だけを double buffering する方法もおそらくなさそう -> eye RT は unbuffered とする */
-#if 1
-		/* non mandatory: HMD がないときに画面が真っ白になるので SideBySide を表示しておく. 必須ではない */
-        if (!flipper_.flip(uniq_.queue().Get(), uniq_.swapchain().Get(), true)) {
-            auto hr = uniq_.dev()->GetDeviceRemovedReason();
-            ABT("flip failed due to error: 0x%x\n", hr);
-            DebugBreak();
-        }
-#else
-		flipper_.wait(uniq_.queue().Get());
-#endif
-        auto qend = get_clock();
-        INF("Flip and sync: took: Submit:%f Wait:%f Total:%f(ms)\n", measurement(qbegin, qmid), measurement(qmid, qend), measurement(qbegin, qend));
     }
-#endif
     
-    void draw_stereo_no_ovr(ID3D12PipelineState* pso, int idx)
-    {
-        //ID3D12Resource* p[] = {eye_.rt(idx), eye_.rt(2 + idx) };
-        ID3D12Resource* p[] = {eye_.rt(0), eye_.rt(2) };
-        auto begin_cmd = [&](ID3D12GraphicsCommandList* cmd, int i) {
-            D3D12_RESOURCE_BARRIER barrier_begin = {
-                D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAG_NONE,
-                {   p[i],
-                    D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,/* before state */
-                    D3D12_RESOURCE_STATE_RENDER_TARGET /* after state */}};
-            cmd->ResourceBarrier(1, &barrier_begin); /* barrier の desc は長くてつらいがこれを隠蔽したらサンプルの意味がない */
-        };
-        begin_cmd(pre_cmd_list_.Get(), 0);
-        begin_cmd(pre_cmd_list_.Get(), 1);
-        
-        pre_cmd_list_->Close();
-        
-        stereo_cmd_alloc_[idx][0]->Reset();
-        stereo_cmd_alloc_[idx][1]->Reset();
-        stereo_cmd_list_[0]->Reset(stereo_cmd_alloc_[idx][0].Get(), pso);
-        stereo_cmd_list_[1]->Reset(stereo_cmd_alloc_[idx][1].Get(), pso);
-        
-        //D3D12_CPU_DESCRIPTOR_HANDLE rtv[] = {{eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx},
-        //                                   {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * (2 + idx)}};
-        D3D12_CPU_DESCRIPTOR_HANDLE rtv[] = {{eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr},
-                                             {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * 2}};
-
-        D3D12_CPU_DESCRIPTOR_HANDLE dsv = {dsv_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart()};
-        
-        /* シャドウの有無によらずサンプリング完了バリア用コマンドバッファを Reset しておく */
-        finish_cmd_alloc_[idx]->Reset();
-        finish_cmd_list_->Reset(finish_cmd_alloc_[idx].Get(), nullptr);
-        auto finishcmd = finish_cmd_list_.Get();
-        /* 同様に shadow も Reset しておかないと Debug Layer がエラーをレポートする */
-        shadowpass_cmd_alloc_[idx]->Reset();
-        shadowpass_cmd_list_->Reset(shadowpass_cmd_alloc_[idx].Get(), nullptr);
-        auto shadowpasscmd = shadowpass_cmd_list_.Get();
-        
-        auto begin = get_clock();
-        const float col[] = {0.1f, 0.1f, 0.1f, 1.f};
-        /* recording draw commands */
-        if (loading_->is_ready()) {
-            auto func = [&](ID3D12GraphicsCommandList* cmd, int i) {
-                cmd->RSSetViewports(1, &viewport_);
-                cmd->RSSetScissorRects(1, &scissor_);
-                cmd->OMSetRenderTargets(1, &rtv[i], FALSE, nullptr);
-                cmd->ClearRenderTargetView(rtv[i], col, 0, nullptr);
-                cmd->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-                loading_->draw(uniq_, cmd);
-            };
-            func(stereo_cmd_list_[0].Get(), 0);
-            func(stereo_cmd_list_[1].Get(), 1);
-        }
-        else if (playing_->is_ready()) {
-            D3D12_RESOURCE_BARRIER end = {
-                D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAG_NONE,
-                {   shadow_.rt(0),
-                    D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,/* before state */
-                    D3D12_RESOURCE_STATE_DEPTH_WRITE}};
-            finishcmd->ResourceBarrier(1, &end);
-            
-            // shadow pass
-            D3D12_CPU_DESCRIPTOR_HANDLE shadow = {shadow_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr};
-            shadowpasscmd->OMSetRenderTargets(0, nullptr, FALSE, &shadow);
-            shadowpasscmd->ClearDepthStencilView(shadow, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-            D3D12_VIEWPORT vp = {0.f, 0.f, 1024.f, 1024.f, D3D12_MIN_DEPTH, D3D12_MAX_DEPTH};
-            D3D12_RECT scissor = {0, 0, 1024, 1024};
-            shadowpasscmd->RSSetViewports(1, &vp); /* viewport を大きくする GPU が死ぬ */
-            shadowpasscmd->RSSetScissorRects(1, &scissor);
-                
-            playing_->draw_shadowpass(uniq_, shadowpasscmd);
-
-            D3D12_RESOURCE_BARRIER mid = {
-                D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAG_NONE,
-                {   shadow_.rt(0),
-                    D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                    D3D12_RESOURCE_STATE_DEPTH_WRITE,/* before state */
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE /* after state */}};
-            shadowpasscmd->ResourceBarrier(1, &mid);
-
-            playing_->set_shadowpass(false);
-                
-            // Scene Pass
-            auto func = [&](ID3D12GraphicsCommandList* cmd, int i) {
-                const float col3[] = {0.6f, 0.6f, 0.6f, 1.f};
-                cmd->OMSetRenderTargets(1, &rtv[i], FALSE, &dsv);
-                cmd->ClearRenderTargetView(rtv[i], col3, 0, nullptr);
-                cmd->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-                cmd->RSSetViewports(1, &viewport_);
-                cmd->RSSetScissorRects(1, &scissor_);
-                playing_->draw(uniq_, cmd);
-            };
-            func(stereo_cmd_list_[0].Get(), 0);
-            func(stereo_cmd_list_[1].Get(), 1);
-        }
-
-        auto end_cmd = [&](ID3D12GraphicsCommandList* cmd, ID3D12Resource* rt) {
-            D3D12_RESOURCE_BARRIER barrier_end = {
-                D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAG_NONE,
-                {   rt,
-                    D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                    D3D12_RESOURCE_STATE_RENDER_TARGET,/* before state */
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE /* after */
-                }};
-            cmd->ResourceBarrier(1, &barrier_end);
-            cmd->Close();
-        };
-
-        end_cmd(stereo_cmd_list_[0].Get(), p[0]);
-        end_cmd(stereo_cmd_list_[1].Get(), p[1]);
-
-        shadowpasscmd->Close();
-
-        /* Final Stage */
-        D3D12_CPU_DESCRIPTOR_HANDLE rtv0 = {rt_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx};
-        draw_sidebyside(rtv0, idx, finishcmd);
-        
-        finishcmd->Close();
-            
-        auto end = get_clock();
-        INF("Build Command Buffer: took: %f(ms)\n", measurement(std::move(begin), std::move(end)));
-            
-        auto qbegin = get_clock();
-        PIXBeginEvent(uniq_.queue().Get(), 0, L"execute command");
-#if defined(USE_OVR)
-        //ID3D12CommandList* lists1[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get()};
-        //uniq_.queue()->ExecuteCommandLists(std::extent< decltype(lists1) >::value, lists1);
-            
-        ID3D12CommandList* l[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get(), stereo_cmd_list_[0].Get(), stereo_cmd_list_[1].Get(), finish_cmd_list_.Get()};
-        uniq_.queue()->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
-        //flipper_.wait(rightq_.Get());
-        //flipper_.wait(leftq_.Get());
-#else
-        /* left only */
-        ID3D12CommandList* l[] = {pre_cmd_list_.Get(), shadowpass_cmd_list_.Get(), stereo_cmd_list_[0].Get(), finish_cmd_list_.Get()};
-        uniq_.queue()->ExecuteCommandLists(std::extent< decltype(l) >::value, l);
-#endif
-        PIXEndEvent(uniq_.queue().Get());
-
-        auto qmid = get_clock();
-        if (!flipper_.flip(uniq_.queue().Get(), uniq_.swapchain().Get(), true)) {
-            auto hr = uniq_.dev()->GetDeviceRemovedReason();
-            ABT("flip failed due to error: 0x%x\n", hr);
-            DebugBreak();
-        }
-        auto qend = get_clock();
-        INF("Flip and sync: took: Submit:%f Wait:%f Total:%f(ms)\n", measurement(qbegin, qmid), measurement(qmid, qend), measurement(qbegin, qend));
-
-    }
-
     void draw_sidebyside(const D3D12_CPU_DESCRIPTOR_HANDLE& rtv0, int idx, ID3D12GraphicsCommandList* cmd)
     {
         D3D12_RESOURCE_BARRIER begin = {
