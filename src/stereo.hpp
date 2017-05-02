@@ -172,7 +172,7 @@ class stereo_t : public appbase_t {
 #if defined(USE_OVR)
     vr::IVRSystem* vrsystem_;
     vr::IVRRenderModels* rendermodels_;
-    buffered_render_target_t< 4 > eye_;
+    buffered_render_target_t< 2 > eye_;
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > leftq_;
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > rightq_;
     vr::D3D12TextureData_t leftrt_;
@@ -332,20 +332,20 @@ public:
             }
 #endif
             
-            ComPtr< ID3D12Resource > ovr_rtv[offscreen_buffers_ * 2];
+            ComPtr< ID3D12Resource > ovr_rtv[2];
             auto eyetex = setup_tex2d(1280, 720, DXGI_FORMAT_R8G8B8A8_UNORM, 1, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
-            for (int i = 0; i < offscreen_buffers_ * 2; i ++) {
+            for (int i = 0; i < 2; i ++) {
                 D3D12_CLEAR_VALUE cv = {DXGI_FORMAT_R8G8B8A8_UNORM, {0.6f, 0.6f, 0.6f, 1.f}};
                 uniq_.dev()->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &eyetex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&ovr_rtv[i]));
                 NAME_OBJ_WITH_INDEXED(ovr_rtv, i);
             }
 
             D3D12_RENDER_TARGET_VIEW_DESC desc = {DXGI_FORMAT_R8G8B8A8_UNORM, D3D12_RTV_DIMENSION_TEXTURE2D, {0, 0}};
-            eye_.init_rtv(uniq_, &desc, offscreen_buffers_ * 2, ovr_rtv);
+            eye_.init_rtv(uniq_, &desc, 2, ovr_rtv);
             leftq_ = uniq_.create_command_queue(D3D12_COMMAND_LIST_TYPE_DIRECT);
             rightq_ = uniq_.create_command_queue(D3D12_COMMAND_LIST_TYPE_DIRECT);
             leftrt_ = {ovr_rtv[0].Get(), leftq_.Get(), 0};
-            rightrt_ = {ovr_rtv[2].Get(), rightq_.Get(), 0};
+            rightrt_ = {ovr_rtv[1].Get(), rightq_.Get(), 0};
         }
 
 #endif
@@ -481,7 +481,7 @@ protected:
 #if defined(USE_OVR) && !defined(DUMMY_OVR)
             /* left/right に command queue を渡してはいるが、明示的に何かのコマンドを詰む必要はなさそうだ. */
             vr::D3D12TextureData_t left = {eye_.rt(0), leftq_.Get(), 0};
-            vr::D3D12TextureData_t right = {eye_.rt(2), rightq_.Get(), 0};
+            vr::D3D12TextureData_t right = {eye_.rt(1), rightq_.Get(), 0};
             vr::VRTextureBounds_t bounds = {/* uvmin */0.f, 0.f, /* uvmax */1.f, 1.f};
             vr::Texture_t lt = {&left, vr::TextureType_DirectX12, vr::ColorSpace_Gamma};
             vr::Texture_t rt = {&right, vr::TextureType_DirectX12, vr::ColorSpace_Gamma};
@@ -521,8 +521,7 @@ protected:
 
     void draw_stereo(int idx, bool use_sidebyside)
     {
-        //ID3D12Resource* p[] = {eye_.rt(0 + idx), eye_.rt(2 + idx) };
-        ID3D12Resource* p[] = {eye_.rt(0), eye_.rt(2) };
+        ID3D12Resource* p[] = {eye_.rt(0), eye_.rt(1) };
         auto begin_cmd = [&](ID3D12GraphicsCommandList* cmd, int i) {
             D3D12_RESOURCE_BARRIER barrier_begin = {
                 D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_BARRIER_FLAG_NONE,
@@ -537,10 +536,8 @@ protected:
         
         pre_cmd_list_->Close();
         
-        //D3D12_CPU_DESCRIPTOR_HANDLE rtv[] = {{eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * idx},
-        //                                   {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * (2 + idx)}};
         D3D12_CPU_DESCRIPTOR_HANDLE rtv[] = {{eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr},
-                                             {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv * 2}};
+                                             {eye_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart().ptr + uniq_.sizeset().rtv}};
 
         D3D12_CPU_DESCRIPTOR_HANDLE dsv = {dsv_.descriptor_heap()->GetCPUDescriptorHandleForHeapStart()};
         
@@ -666,9 +663,6 @@ protected:
         cmd->RSSetViewports(1, &viewport_);
         cmd->RSSetScissorRects(1, &scissor_);
 
-        //cmd->SetGraphicsRoot32BitConstant(0, idx, 1);
-        cmd->SetGraphicsRoot32BitConstant(0, 0, 1);
-        
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
         cmd->IASetVertexBuffers(0, 1, &vbv_);
         cmd->SetGraphicsRoot32BitConstant(0, 0, 0);

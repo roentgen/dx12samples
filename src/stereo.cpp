@@ -81,7 +81,6 @@ void stereo_t::create_pipeline_state(uniq_device_t& u, const std::wstring& dir)
     }
 }
 
-
 void stereo_t::create_root_signature(uniq_device_t& u)
 {
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
@@ -93,19 +92,16 @@ void stereo_t::create_root_signature(uniq_device_t& u)
 
     /**
      * ROOT CONSTANT    b0 - lr  (left or right)
-     *                     - idx (offscreen index)
      * DESCRIPTOR TABLE b1 - model matricies
-     * DESCRIPTOR TABLE t0 - 0-left texture
-     *                  t1 - 1-left texture
-     *                  t2 - 0-right texture
-     *                  t3 - 1-right texture
+     * DESCRIPTOR TABLE t0 - left texture
+     *                  t1 - right texture
      */
     D3D12_DESCRIPTOR_RANGE1 ranges[] = {
         create_range(D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
                      1 /* descriptors */, 1 /* base-register index */, 0 /* space */,
                      D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC),
         create_range(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-                     4 /* descriptors */, 0 /* base-register index */, 0 /* space */,
+                     2 /* descriptors */, 0 /* base-register index */, 0 /* space */,
                      D3D12_DESCRIPTOR_RANGE_FLAG_NONE),
     };
         
@@ -114,7 +110,7 @@ void stereo_t::create_root_signature(uniq_device_t& u)
         {1, ranges + 1},
     };
     
-    D3D12_ROOT_CONSTANTS rc[] = {{0 /* register */, 0 /* space */, 2 /* num constants in a single constant buffer */}};
+    D3D12_ROOT_CONSTANTS rc[] = {{0 /* register */, 0 /* space */, 1 /* num constants in a single constant buffer */}};
     
     D3D12_ROOT_PARAMETER1 params[] = {
         create_root_param(rc     , D3D12_SHADER_VISIBILITY_ALL),
@@ -248,7 +244,7 @@ void stereo_t::load_asset()
             srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
             srv.Texture2D.MipLevels = 1;
             /* 指定した SRV Heap に ID3D12Resource/D3D12_SHADER_RESOURCE_VIEW_DESC で指定した SRV を生成する */
-            for (int i = 0; i < 2 * offscreen_buffers_; i ++) {
+            for (int i = 0; i < 2; i ++) {
                 uniq_.dev()->CreateShaderResourceView(eye_.rt(i), &srv, hdl);
                 hdl.ptr += uniq_.sizeset().view;
             }

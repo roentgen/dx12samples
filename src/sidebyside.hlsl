@@ -7,13 +7,12 @@ struct PSInput {
     float2 uv : TEXCOORD;
 };
 
-Texture2D tex[4] : register(t0); /* 0:left-eye 1:right-eye*/
+Texture2D tex[2] : register(t0); /* 0:left-eye 1:right-eye*/
 SamplerState ssampler : register(s0);
 
 cbuffer cb_index : register(b0)
 {
 uint lr;
-uint idx;
 }
 
 cbuffer cb0 : register(b1)
@@ -33,5 +32,5 @@ PSInput VSMain(float3 position : POSITION, float2 uv : TEXCOORD)
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    return tex[lr * 2 + idx].Sample(ssampler, input.uv);
+    return tex[lr].Sample(ssampler, input.uv);
 }
