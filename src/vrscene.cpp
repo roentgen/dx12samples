@@ -221,48 +221,49 @@ void playground_t::init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, co
     /* vertex buffer size */
     {
         /* cube 正面の左上から時計回りに A, B, C D とすると */
+        float r = .25f;
         vertex_t v[] = {
             // front
-            {{-.5f, -.5f, -.5f}, {0.f, 1.f}, {0.f, 0.f, -1.f}}, // 0: D
-            {{-.5f,  .5f, -.5f}, {0.f, 0.f}, {0.f, 0.f, -1.f}}, // 1: A
-            {{ .5f, -.5f, -.5f}, {1.f, 1.f}, {0.f, 0.f, -1.f}}, // 2: C
-            {{ .5f,  .5f, -.5f}, {1.f, 0.f}, {0.f, 0.f, -1.f}}, // 3: B
+            {{-r, -r, -r}, {0.f, 1.f}, {0.f, 0.f, -1.f}}, // 0: D
+            {{-r,  r, -r}, {0.f, 0.f}, {0.f, 0.f, -1.f}}, // 1: A
+            {{ r, -r, -r}, {1.f, 1.f}, {0.f, 0.f, -1.f}}, // 2: C
+            {{ r,  r, -r}, {1.f, 0.f}, {0.f, 0.f, -1.f}}, // 3: B
             /* left Y
                     |
                   Z-+     */
-            {{-.5f, -.5f,  .5f}, {0.f, 1.f}, {-1.f, 0.f, 0.f}}, // 4: D
-            {{-.5f,  .5f,  .5f}, {0.f, 0.f}, {-1.f, 0.f, 0.f}}, // 5: A
-            {{-.5f, -.5f, -.5f}, {1.f, 1.f}, {-1.f, 0.f, 0.f}}, // 6: C
-            {{-.5f,  .5f, -.5f}, {1.f, 0.f}, {-1.f, 0.f, 0.f}}, // 7: B
+            {{-r, -r,  r}, {0.f, 1.f}, {-1.f, 0.f, 0.f}}, // 4: D
+            {{-r,  r,  r}, {0.f, 0.f}, {-1.f, 0.f, 0.f}}, // 5: A
+            {{-r, -r, -r}, {1.f, 1.f}, {-1.f, 0.f, 0.f}}, // 6: C
+            {{-r,  r, -r}, {1.f, 0.f}, {-1.f, 0.f, 0.f}}, // 7: B
             /* right Y
                      |
                      +--Z  */
-            {{ .5f, -.5f, -.5f}, {0.f, 1.f}, {1.f, 0.f, 0.f}}, // 8: D
-            {{ .5f,  .5f, -.5f}, {0.f, 0.f}, {1.f, 0.f, 0.f}}, // 9: A
-            {{ .5f, -.5f,  .5f}, {1.f, 1.f}, {1.f, 0.f, 0.f}}, // 10: C
-            {{ .5f,  .5f,  .5f}, {1.f, 0.f}, {1.f, 0.f, 0.f}}, // 11: B
+            {{ r, -r, -r}, {0.f, 1.f}, {1.f, 0.f, 0.f}}, // 8: D
+            {{ r,  r, -r}, {0.f, 0.f}, {1.f, 0.f, 0.f}}, // 9: A
+            {{ r, -r,  r}, {1.f, 1.f}, {1.f, 0.f, 0.f}}, // 10: C
+            {{ r,  r,  r}, {1.f, 0.f}, {1.f, 0.f, 0.f}}, // 11: B
             /* back  Y
                      |
                   X--+     */
-            {{ .5f, -.5f, .5f}, {0.f, 1.f}, {0.f, 0.f, 1.f}}, // 12: D'
-            {{ .5f,  .5f, .5f}, {0.f, 0.f}, {0.f, 0.f, 1.f}}, // 13: A'
-            {{-.5f, -.5f, .5f}, {1.f, 1.f}, {0.f, 0.f, 1.f}}, // 14: C'
-            {{-.5f,  .5f, .5f}, {1.f, 0.f}, {0.f, 0.f, 1.f}}, // 15: B'
+            {{ r, -r, r}, {0.f, 1.f}, {0.f, 0.f, 1.f}}, // 12: D'
+            {{ r,  r, r}, {0.f, 0.f}, {0.f, 0.f, 1.f}}, // 13: A'
+            {{-r, -r, r}, {1.f, 1.f}, {0.f, 0.f, 1.f}}, // 14: C'
+            {{-r,  r, r}, {1.f, 0.f}, {0.f, 0.f, 1.f}}, // 15: B'
             /* top   Z
                      |
                      +--X  */
-            {{-.5f, .5f,-.5f}, {0.f, 1.f}, {0.f, 1.f, 0.f}}, // 16: D'
-            {{-.5f, .5f, .5f}, {0.f, 0.f}, {0.f, 1.f, 0.f}}, // 17: A'
-            {{ .5f, .5f,-.5f}, {1.f, 1.f}, {0.f, 1.f, 0.f}}, // 18: C'
-            {{ .5f, .5f, .5f}, {1.f, 0.f}, {0.f, 1.f, 0.f}}, // 19: B'
+            {{-r, r,-r}, {0.f, 1.f}, {0.f, 1.f, 0.f}}, // 16: D'
+            {{-r, r, r}, {0.f, 0.f}, {0.f, 1.f, 0.f}}, // 17: A'
+            {{ r, r,-r}, {1.f, 1.f}, {0.f, 1.f, 0.f}}, // 18: C'
+            {{ r, r, r}, {1.f, 0.f}, {0.f, 1.f, 0.f}}, // 19: B'
             /* bottom
                      +--X
                      |
                      Z   */
-            {{-.5f,-.5f, .5f}, {0.f, 1.f}, {0.f,-1.f, 0.f}}, // 20: D'
-            {{-.5f,-.5f,-.5f}, {0.f, 0.f}, {0.f,-1.f, 0.f}}, // 21: A'
-            {{ .5f,-.5f, .5f}, {1.f, 1.f}, {0.f,-1.f, 0.f}}, // 22: C'
-            {{ .5f,-.5f,-.5f}, {1.f, 0.f}, {0.f,-1.f, 0.f}}  // 23: B'
+            {{-r,-r, r}, {0.f, 1.f}, {0.f,-1.f, 0.f}}, // 20: D'
+            {{-r,-r,-r}, {0.f, 0.f}, {0.f,-1.f, 0.f}}, // 21: A'
+            {{ r,-r, r}, {1.f, 1.f}, {0.f,-1.f, 0.f}}, // 22: C'
+            {{ r,-r,-r}, {1.f, 0.f}, {0.f,-1.f, 0.f}}  // 23: B'
         };
 
         size_t size = sizeof(v);
@@ -418,11 +419,14 @@ void playground_t::init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, co
                                {0.f, 0.f, 0.f, 1.f}};
     /* model and lightspace view and projection matricies */
     // camera-space
-    matrix[0] = DirectX::XMMatrixLookAtLH({0.f, 5.f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
-    matrix[1] = DirectX::XMMatrixLookAtLH({0.f, 5.f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
-    
+    //matrix[0] = DirectX::XMMatrixLookAtLH({ 1.f - 0.01f, 3.25f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+    //matrix[1] = DirectX::XMMatrixLookAtLH({ 1.f + 0.01f, 3.25f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+    //matrix[0] = DirectX::XMMatrixLookAtLH({-0.75f, 0.75f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+    matrix[0] = DirectX::XMMatrixLookAtLH({-1.2f - 0.01f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+    matrix[1] = DirectX::XMMatrixLookAtLH({-1.2f + 0.01f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+
     //set_perspective_lefthand(matrix[DYNAMIC_MODEL_MATRICIES + 1], 120.f * (pi / 180.f), 16.f/9.f, 1.0f, 125.f);
-    matrix[2] = DirectX::XMMatrixPerspectiveFovLH(100.f * (pi / 180.f), 16.0f/9.0f, 1.f, 125.f);
+    matrix[2] = DirectX::XMMatrixPerspectiveFovLH(100.f * (pi / 180.f), 16.0f/9.0f, 0.1f, 100.f);
 
     // light-space
     matrix[3] = DirectX::XMMatrixLookAtLH({-2.f, 5.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
@@ -476,13 +480,24 @@ void playground_t::init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, co
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvdesc = { cbv2_->GetGPUVirtualAddress(), align256(sizeof(float) * 16 * MODEL_MATRICIES)};
         u.dev()->CreateConstantBufferView(&cbvdesc, hdl);
         hdl.ptr += u.sizeset().view;
+
+        DirectX::XMMATRIX mat = {
+            {1.f, 0.f, 0.f, 0.f},
+            {0.f, 1.f, 0.f, 0.f},
+            {0.f, 0.f, 1.f, 0.f},
+            {0.f, 0.f, 0.f, 1.f},
+        };
         
         volatile uint8_t* ptr = nullptr;
         D3D12_RANGE readrange = {0, 0};
         cbv2_->Map(0, &readrange, reinterpret_cast< void** >(const_cast< uint8_t** >(&ptr)));
-        for (int i = 0; i < USE_MODEL_MATRICIES; i ++) {
-            memcpy(const_cast< uint8_t* >(ptr) + i * sizeof(float) * 16, &ident, sizeof(float) * 16);
+        for (int i = 0; i < ROW; i ++) {
+            for (int j = 0; j < COL; j ++) {
+                auto t = DirectX::XMMatrixTranspose(DirectX::XMMatrixTranslationFromVector({1.5f * j - 10.f, 0.26f, 1.5f * i - 40.f}));
+                memcpy(const_cast< uint8_t* >(ptr) + (i * COL + j) * sizeof(float) * 16, &t, sizeof(float) * 16);
+            }
         }
+        memcpy(const_cast< uint8_t* >(ptr) + (LAST_MATRIX * sizeof(float) * 16), &mat, sizeof(float) * 16);
         cbv2_->Unmap(0, nullptr);
     }
 
@@ -592,7 +607,7 @@ void playground_t::init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, co
         D3D12_SHADER_BYTECODE psbytes = {scene_pixel_shader->GetBufferPointer(), scene_pixel_shader->GetBufferSize()};
         D3D12_RASTERIZER_DESC raster = {
             D3D12_FILL_MODE_SOLID,
-            D3D12_CULL_MODE_NONE, // Back-culling:ON
+            D3D12_CULL_MODE_BACK, // Back-culling:ON
             FALSE, /* FrontCCW=Flase: Front=CW */
             D3D12_DEFAULT_DEPTH_BIAS,
             D3D12_DEFAULT_DEPTH_BIAS_CLAMP,
@@ -645,7 +660,7 @@ void playground_t::init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, co
     /* recording draw commands */
     {
         /* 継承した CBV だけを bundle で edit できないかと考えたが無理だった */
-        //bundle_->SetPipelineState(pso_.Get());
+        bundle_->SetPipelineState(pso_.Get());
         bundle_->SetGraphicsRootSignature(rootsig_.Get());
         auto begin = get_clock();
 #if 0
@@ -705,28 +720,20 @@ void playground_t::update(uniq_device_t& u, uint64_t freq)
 
     static uint64_t time = 0ULL;
     /* +angle の回転方向は左ネジの法則と同じ */
-    auto q = DirectX::XMQuaternionRotationAxis({0.f, 1.0f, 0.f}, (time / 40.f) * (pi/180.f));
+    auto q = DirectX::XMQuaternionRotationAxis({0.f, 1.f, 0.f}, (time / 40.f) * (pi/180.f));
     /* 原点で rotate してから translate */
-    mat = DirectX::XMMatrixMultiplyTranspose(DirectX::XMMatrixRotationQuaternion(q), DirectX::XMMatrixTranslationFromVector({0.f, 0.500f, 0.f}));
+    mat = DirectX::XMMatrixMultiplyTranspose(DirectX::XMMatrixRotationQuaternion(q), DirectX::XMMatrixTranslationFromVector({0.f, 1.f, 0.f}));
+    //mat = DirectX::XMMatrixTranspose(DirectX::XMMatrixTranslationFromVector({0.f, 1.2f, 0.f}));
     time += freq;
 
     /* FIXME: CBV の更新と GPU の実行は(ダブルバッファ化しているコマンドバッファとは異なり)オーバーラップするので悪い. */
     float* ptr = nullptr;
     D3D12_RANGE readrange = {0, 0};
     auto hr = cbv2_->Map(0, &readrange, reinterpret_cast< void** >(&ptr));
-    for (int i = 0; i < ROW; i ++) {
-        for (int j = 0; j < COL; j ++) {
-            if (i || j ) {
-                auto t = DirectX::XMMatrixTranspose(DirectX::XMMatrixTranslationFromVector({1.5f * i, 0.5f, 1.5f * j}));
-                memcpy(reinterpret_cast< uint8_t* >(ptr) + (i * COL + j) * sizeof(float) * 16, &t, sizeof(float) * 16);
-            }
-        }
-    }
-    memcpy(reinterpret_cast< uint8_t* >(ptr), &mat, sizeof(float) * 16);
+    memcpy(reinterpret_cast< uint8_t* >(ptr) + sizeof(float) * 16 * (ROW/2 * COL + COL/2), &mat, sizeof(float) * 16);
     cbv2_->Unmap(0, nullptr);
 #endif
 }
-
 
 void playground_t::draw_shadowpass(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist)
 {
@@ -782,9 +789,9 @@ void playground_t::draw(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist)
     cmdlist->SetGraphicsRoot32BitConstant(0, 0, 1); // row
 
     /* CBV */
-    D3D12_GPU_DESCRIPTOR_HANDLE gpuhandle2 = scene_descheap_->GetGPUDescriptorHandleForHeapStart();
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuhandle2 = {scene_descheap_->GetGPUDescriptorHandleForHeapStart().ptr + u.sizeset().view * eye_select_};
     cmdlist->SetGraphicsRootDescriptorTable(1 /* slot */, gpuhandle2);
-    gpuhandle2.ptr += (u.sizeset().view * 2);
+    gpuhandle2.ptr += (u.sizeset().view * (2 - eye_select_));
     cmdlist->SetGraphicsRootDescriptorTable(2 /* slot */, gpuhandle2);
     gpuhandle2.ptr += u.sizeset().view;
     cmdlist->SetGraphicsRootDescriptorTable(3 /* slot */, gpuhandle2);
@@ -803,8 +810,11 @@ void playground_t::draw(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist)
 #endif
 #endif  
 
+#if 1
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuhandle = {scene_descheap_->GetGPUDescriptorHandleForHeapStart().ptr + u.sizeset().view * eye_select_};
     for (int i = 0; i < ROW; i ++) {
         cmdlist->SetGraphicsRoot32BitConstant(0, i, 1); // row
+        cmdlist->SetGraphicsRootDescriptorTable(1 /* slot */, gpuhandle);
 #if !defined(CHECK_DEPTH_BUFFER)
 #if !defined(USE_BUNDLE)
         //auto begin = get_clock();
@@ -831,6 +841,7 @@ void playground_t::draw(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist)
 #endif
 #endif
     }
+#endif
 }
 
 bool playground_t::is_ready()

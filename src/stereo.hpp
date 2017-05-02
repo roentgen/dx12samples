@@ -91,8 +91,9 @@ class playground_t : public scene_t {
     bool shadowpass_;
     std::shared_ptr< std::vector< Microsoft::WRL::ComPtr< ID3D12Resource > > > payload_;
     std::atomic< bool > finished_;
+    int eye_select_;
 public:
-    playground_t() : shadowpass_(false), finished_(false) {}
+    playground_t() : shadowpass_(false), finished_(false), eye_select_(0) {}
 
     void set_deferred_cmdset(cmdset_t cmdset)
     {
@@ -146,6 +147,12 @@ public:
         u.dev()->CreateShaderResourceView(resc, &srv, hdl);
     }
 
+    void select_eye(int idx)
+    {
+        if (0 <= idx && idx < 2)
+            eye_select_ = idx;
+    }
+    
     void init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, const std::wstring&);
     void update(uniq_device_t& u, uint64_t freq);
     void draw(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist);
@@ -604,7 +611,9 @@ protected:
                 cmd->RSSetScissorRects(1, &scissor_);
                 playing_->draw(uniq_, cmd);
             };
+            playing_->select_eye(0);
             func(stereo_cmd_list_[0].Get(), 0);
+            playing_->select_eye(1);
             func(stereo_cmd_list_[1].Get(), 1);
         }
 
