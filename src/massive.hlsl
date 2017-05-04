@@ -19,11 +19,11 @@ uint lr;
 cbuffer cb1 : register(b1)
 {
 float4x4 viewmat;
+float4x4 proj;
 }
 
 cbuffer cb2 : register(b3)
 {
-float4x4 proj        ;// : packoffset(c0);
 float4x4 lightviewmat;// : packoffset(c16);
 float4x4 lightproj   ;// : packoffset(c32);
 }

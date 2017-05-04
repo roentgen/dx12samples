@@ -92,6 +92,8 @@ class playground_t : public scene_t {
     std::shared_ptr< std::vector< Microsoft::WRL::ComPtr< ID3D12Resource > > > payload_;
     std::atomic< bool > finished_;
     int eye_select_;
+	DirectX::XMMATRIX lproj_;
+	DirectX::XMMATRIX rproj_;
 	DirectX::XMMATRIX pos_;
 	DirectX::XMMATRIX head_;
 	DirectX::XMMATRIX eye_left_;
