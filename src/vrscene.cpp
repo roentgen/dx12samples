@@ -419,12 +419,33 @@ void playground_t::init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, co
                                {0.f, 0.f, 0.f, 1.f}};
     /* model and lightspace view and projection matricies */
     // camera-space
-    //matrix[0] = DirectX::XMMatrixLookAtLH({ 1.f - 0.01f, 3.25f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
-    //matrix[1] = DirectX::XMMatrixLookAtLH({ 1.f + 0.01f, 3.25f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
-    //matrix[0] = DirectX::XMMatrixLookAtLH({-0.75f, 0.75f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
-    matrix[0] = DirectX::XMMatrixLookAtLH({-1.2f - 0.01f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
-    matrix[1] = DirectX::XMMatrixLookAtLH({-1.2f + 0.01f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
-
+	pos_ = DirectX::XMMatrixLookAtLH({-1.2f, 0.55f, -1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+#if defined(USE_OVR) && !defined(DUMMY_OVR)
+	//auto view = DirectX::XMMatrixLookAtLH({-1.2f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+	head_ = DirectX::XMMatrixLookAtLH({0.f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+	vr::HmdMatrix34_t lth = u.vrsystem()->GetEyeToHeadTransform(vr::Eye_Left);
+	vr::HmdMatrix34_t rth = u.vrsystem()->GetEyeToHeadTransform(vr::Eye_Right);
+	auto hmdmat2xmmat = [](vr::HmdMatrix34_t m) {
+		DirectX::XMMATRIX mat = {
+			m.m[0][0], m.m[0][1], m.m[0][2], m.m[0][3],
+			m.m[1][0], m.m[1][1], m.m[1][2], m.m[1][3],
+			m.m[2][0], m.m[2][1], m.m[2][2], m.m[2][3],
+			0.f, 0.f, 0.f, 1.f
+		};
+		return mat;
+	};
+	DirectX::XMMATRIX htl = hmdmat2xmmat(std::move(lth));
+	DirectX::XMMATRIX htr = hmdmat2xmmat(std::move(rth));
+	eye_left_ = DirectX::XMMatrixInverse(nullptr, htl);
+	eye_right_ = DirectX::XMMatrixInverse(nullptr, htr);
+	auto body = DirectX::XMMatrixMultiply(pos_, head_);
+	matrix[0] = DirectX::XMMatrixMultiply(body, eye_left_);
+	matrix[1] = DirectX::XMMatrixMultiply(body, eye_right_);
+#else
+    matrix[0] = DirectX::XMMatrixLookAtLH({-1.2f - 0.16f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+    matrix[1] = DirectX::XMMatrixLookAtLH({-1.2f + 0.16f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+#endif
+	
     //set_perspective_lefthand(matrix[DYNAMIC_MODEL_MATRICIES + 1], 120.f * (pi / 180.f), 16.f/9.f, 1.0f, 125.f);
     matrix[2] = DirectX::XMMatrixPerspectiveFovLH(100.f * (pi / 180.f), 16.0f/9.0f, 0.1f, 100.f);
 
@@ -710,6 +731,37 @@ void playground_t::init(uniq_device_t& u, ID3D12GraphicsCommandList* cmdlist, co
 
 void playground_t::update(uniq_device_t& u, uint64_t freq)
 {
+#if defined(USE_OVR) && !defined(DUMMY_OVR)
+	auto hmdmat2xmmat = [](vr::HmdMatrix34_t m) {
+		DirectX::XMMATRIX mat = {
+			m.m[0][0], m.m[0][1], m.m[0][2], m.m[0][3],
+			m.m[1][0], m.m[1][1], m.m[1][2], m.m[1][3],
+			m.m[2][0], m.m[2][1], m.m[2][2], m.m[2][3],
+			0.f, 0.f, 0.f, 1.f
+		};
+		return mat;
+	};
+	
+	DirectX::XMMATRIX hmdpose;
+	vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount];
+	vr::VRCompositor()->WaitGetPoses(poses, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
+	if (poses[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid) {
+		head_ = hmdmat2xmmat(poses[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking);
+		head_ = DirectX::XMMatrixInverse(nullptr, head_);
+	}
+	auto body = DirectX::XMMatrixMultiply(pos_, head_);
+	DirectX::XMMATRIX lm = DirectX::XMMatrixMultiply(body, eye_left_);
+	DirectX::XMMATRIX rm = DirectX::XMMatrixMultiply(body, eye_right_);
+	{
+		volatile uint8_t* ptr = nullptr;
+		D3D12_RANGE readrange = {0, 0};
+		auto hr = cbv_->Map(0, &readrange, reinterpret_cast< void** >(const_cast< uint8_t** >(&ptr)));
+		memcpy(const_cast< uint8_t* >(ptr), &lm, sizeof(float) * 16);
+		memcpy(const_cast< uint8_t* >(ptr) + align256(sizeof(float) * 16), &rm, sizeof(float) * 16);
+		cbv_->Unmap(0, nullptr);
+	}
+#endif
+
 #if 1
     DirectX::XMMATRIX mat = {
         {1.f, 0.f, 0.f, 0.f},

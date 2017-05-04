@@ -11,6 +11,13 @@
 #include <vector>
 #include <algorithm>
 #include <dxgi1_5.h>
+#if defined(USE_OVR)
+#include <openvr.h>
+#else
+namespace vr {
+	typedef void* IVRSystem;
+}
+#endif
 
 struct desc_size_set_t {
     uint32_t view;
@@ -40,12 +47,14 @@ class uniq_device_t {
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > queue_;
     Microsoft::WRL::ComPtr< IDXGIAdapter3 > adapter_;
     desc_size_set_t sizeset_;
+	vr::IVRSystem* vrsystem_;
 public:
     struct frame_resource_t {
     };
 
-    int init(HWND hwnd, int width, int height, int fn, bool use_warp = false)
+    int init(HWND hwnd, int width, int height, int fn, vr::IVRSystem* vrsys = nullptr, bool use_warp = false)
     {
+		vrsystem_ = vrsys;
         using Microsoft::WRL::ComPtr;
         uint32_t flags = 0;
         INF("uniq_device_t::init() hwnd:0x%x width:%d height:%d fn:%d use_warp:%d\n", hwnd, width, height, fn, use_warp);
@@ -182,6 +191,7 @@ public:
     inline Microsoft::WRL::ComPtr< ID3D12CommandQueue >& queue() { return queue_; }
     inline Microsoft::WRL::ComPtr< IDXGIAdapter3 >& adapter() { return adapter_; }
     inline const desc_size_set_t& sizeset() const { return sizeset_; }
+	inline vr::IVRSystem* vrsystem() { return vrsystem_; }
 };
 
 template < int Frames >

@@ -21,7 +21,7 @@
 #include "loading.hpp"
 
 /* override USE_OVR configuration */
-#define DUMMY_OVR
+//#define DUMMY_OVR
 
 #if defined(USE_OVR)
 #include <openvr.h>
@@ -92,6 +92,10 @@ class playground_t : public scene_t {
     std::shared_ptr< std::vector< Microsoft::WRL::ComPtr< ID3D12Resource > > > payload_;
     std::atomic< bool > finished_;
     int eye_select_;
+	DirectX::XMMATRIX pos_;
+	DirectX::XMMATRIX head_;
+	DirectX::XMMATRIX eye_left_;
+	DirectX::XMMATRIX eye_right_;
 public:
     playground_t() : shadowpass_(false), finished_(false), eye_select_(0) {}
 
@@ -179,12 +183,13 @@ class stereo_t : public appbase_t {
 #if defined(USE_OVR)
     vr::IVRSystem* vrsystem_;
     vr::IVRRenderModels* rendermodels_;
+#endif
     buffered_render_target_t< 2 > eye_;
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > leftq_;
     Microsoft::WRL::ComPtr< ID3D12CommandQueue > rightq_;
     vr::D3D12TextureData_t leftrt_;
     vr::D3D12TextureData_t rightrt_;
-#endif
+
     /* final stage 用 */
     Microsoft::WRL::ComPtr< ID3D12RootSignature > rootsig_;
     Microsoft::WRL::ComPtr< ID3D12PipelineState > pso_;
@@ -226,8 +231,29 @@ public:
     
     int init(HWND hwnd, int width, int height)
     {
+#if defined(USE_OVR) && !defined(DUMMY_OVR)
+		{
+            vr::EVRInitError hmderr;
+            vrsystem_ = vr::VR_Init(&hmderr, vr::VRApplication_Scene);
+            INF("hmderr:%d vrsystem_:%p\n", hmderr, vrsystem_);
+            if (hmderr == vr::VRInitError_Init_PathRegistryNotFound) {
+                ABT("Unable to init VR runtime: %s\n", vr::VR_GetVRInitErrorAsEnglishDescription(hmderr));
+                ABTMSG("SteamVR Registry file could not located.\n");
+            }
+            else if (hmderr == vr::VRInitError_Init_HmdNotFound) {
+                ABTMSG("HMD not found .\n");
+            }
+            rendermodels_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &hmderr);
+            if (!rendermodels_) {
+                vrsystem_ = nullptr;
+                vr::VR_Shutdown();
+                ABT("Failed to get generic interface: %d\n", hmderr);
+            }
+		}
+#endif
+
         using namespace Microsoft::WRL;
-        if (uniq_.init(hwnd, width, height, offscreen_buffers_) < 0) {
+        if (uniq_.init(hwnd, width, height, offscreen_buffers_, vrsystem_) < 0) {
             ABT("failed to init uniq_device_t\n");
             return -1;
         }
@@ -318,27 +344,7 @@ public:
         NAME_OBJ(pre_cmd_list_);
         pre_cmd_list_->Close();
 
-#if defined(USE_OVR)
         {
-#if !defined(DUMMY_OVR)
-            vr::EVRInitError hmderr;
-            vrsystem_ = vr::VR_Init(&hmderr, vr::VRApplication_Scene);
-            INF("hmderr:%d vrsystem_:%p\n", hmderr, vrsystem_);
-            if (hmderr == vr::VRInitError_Init_PathRegistryNotFound) {
-                ABT("Unable to init VR runtime: %s\n", vr::VR_GetVRInitErrorAsEnglishDescription(hmderr));
-                ABTMSG("SteamVR Registry file could not located.\n");
-            }
-            else if (hmderr == vr::VRInitError_Init_HmdNotFound) {
-                ABTMSG("HMD not found .\n");
-            }
-            rendermodels_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &hmderr);
-            if (!rendermodels_) {
-                vrsystem_ = nullptr;
-                vr::VR_Shutdown();
-                ABT("Failed to get generic interface: %d\n", hmderr);
-            }
-#endif
-            
             ComPtr< ID3D12Resource > ovr_rtv[2];
             auto eyetex = setup_tex2d(1280, 720, DXGI_FORMAT_R8G8B8A8_UNORM, 1, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
             for (int i = 0; i < 2; i ++) {
@@ -355,7 +361,6 @@ public:
             rightrt_ = {ovr_rtv[1].Get(), rightq_.Get(), 0};
         }
 
-#endif
         return 0;
     }
     
@@ -470,11 +475,7 @@ protected:
             stereo_cmd_list_[1]->Reset(stereo_cmd_alloc_[idx][1].Get(), pso);
 
             auto begin = get_clock();
-#if defined(USE_OVR) && !defined(DUMMY_OVR)
-            vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount];
-            //vr::VRCompositor()->WaitGetPoses(poses, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
-            vr::VRCompositor()->WaitGetPoses(nullptr, 0, nullptr, 0);
-#endif
+
             draw_stereo(idx, true);
 
             auto end = get_clock();
