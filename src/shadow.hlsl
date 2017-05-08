@@ -44,7 +44,6 @@ PSInput VSMain(float3 position : POSITION, float2 uv : TEXCOORD, float3 nrm : NO
     result.position = mul(result.position, transpose(lightviewmat));
     
     result.position = mul(result.position, transpose(lightproj));
-    result.position = result.position / result.position.w;
     //result.pos = float4(position, 1);
 
     //result.position = float4(position, 1);

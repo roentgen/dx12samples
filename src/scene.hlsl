@@ -50,7 +50,6 @@ PSInput VSMain(float3 position : POSITION, float2 uv : TEXCOORD, float3 nrm : NO
     result.norm = normalize(mul(float4(nrm, 1), modelmat));
     result.position = mul(result.position, transpose(viewmat));
     result.position = mul(result.position, transpose(proj));
-    result.position = result.position / result.position.w;
     /* for defined CHECK_DEPTH_BUFFER */
     //result.position = float4(position, 1);
     result.uv = uv;

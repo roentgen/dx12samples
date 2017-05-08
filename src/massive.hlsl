@@ -49,7 +49,6 @@ PSShadowPassInput VSShadowPassMain(float3 position : POSITION, float2 uv : TEXCO
     result.position = mul(result.position, transpose(lightviewmat));
     
     result.position = mul(result.position, transpose(lightproj));
-    result.position = result.position / result.position.w;
     //result.position = float4(position, 1);
     result.uv = uv;
     result.pos = result.position;
