@@ -21,7 +21,7 @@
 #include "loading.hpp"
 
 /* override USE_OVR configuration */
-#define DUMMY_OVR
+//#define DUMMY_OVR
 
 #if defined(USE_OVR)
 #include <openvr.h>

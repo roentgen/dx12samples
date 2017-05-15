@@ -875,9 +875,9 @@ void playground_t::update_projection(uniq_device_t& u)
 	vr::HmdMatrix34_t rth = u.vrsystem()->GetEyeToHeadTransform(vr::Eye_Right);
 	auto hmdmat34_xmmat = [](vr::HmdMatrix34_t m) {
 		DirectX::XMMATRIX mat = {
-			m.m[0][0], m.m[0][1], m.m[0][2], m.m[0][3],
-			m.m[1][0], m.m[1][1], m.m[1][2], m.m[1][3],
-			m.m[2][0], m.m[2][1], m.m[2][2], m.m[2][3],
+			m.m[0][0], m.m[1][0], m.m[2][0], m.m[0][3],
+			m.m[0][1], m.m[1][1], m.m[2][1], m.m[1][3],
+			m.m[0][2], m.m[1][2], m.m[2][2], m.m[2][3],
 			0.f, 0.f, 0.f, 1.f
 		};
 		return mat;
@@ -902,6 +902,8 @@ void playground_t::update_projection(uniq_device_t& u)
 	vr::HmdMatrix44_t rproj = u.vrsystem()->GetProjectionMatrix(vr::Eye_Right, 0.1f, 100.f);
 	lproj_ = XMMatrixTranspose(conv2xmprojlh(std::move(lproj), 0.1f, 100.f));
 	rproj_ = XMMatrixTranspose(conv2xmprojlh(std::move(rproj), 0.1f, 100.f));
+	//lproj_ = DirectX::XMMatrixPerspectiveFovLH(100.f * (pi / 180.f), 16.0f/9.0f, 0.1f, 100.f);
+	//rproj_ = DirectX::XMMatrixPerspectiveFovLH(100.f * (pi / 180.f), 16.0f/9.0f, 0.1f, 100.f);
 #else
 	eye_left_ = DirectX::XMMatrixLookAtLH({-0.33f, 0.f, 1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
     eye_right_ = DirectX::XMMatrixLookAtLH({0.33f, 0.f, 1.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
@@ -916,9 +918,9 @@ void playground_t::update_view(uniq_device_t& u)
 #if defined(USE_OVR) && !defined(DUMMY_OVR)
 	auto hmdmat2xmmat = [](vr::HmdMatrix34_t m) {
 		DirectX::XMMATRIX mat = {
-			m.m[0][0], m.m[0][1], m.m[0][2], m.m[0][3],
-			m.m[1][0], m.m[1][1], m.m[1][2], m.m[1][3],
-			m.m[2][0], m.m[2][1], m.m[2][2], m.m[2][3],
+			m.m[0][0], m.m[1][0], m.m[2][0], m.m[0][3],
+			m.m[0][1], m.m[1][1], m.m[2][1], m.m[1][3],
+			m.m[0][2], m.m[1][2], m.m[2][2], m.m[2][3],
 			0.f, 0.f, 0.f, 1.f
 		};
 		return mat;
@@ -927,8 +929,12 @@ void playground_t::update_view(uniq_device_t& u)
 	vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount];
 	vr::VRCompositor()->WaitGetPoses(poses, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
 	if (poses[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid) {
+		auto mat = DirectX::XMMatrixTranspose(DirectX::XMMatrixTranslationFromVector({0.f, 1.2f, 0.f}));
 		head_ = hmdmat2xmmat(std::move(poses[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking));
+		head_ = DirectX::XMMatrixTranspose(head_);
 		head_ = DirectX::XMMatrixInverse(nullptr, head_);
+		auto minv = DirectX::XMMatrixLookAtLH({0.f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
+		head_ = DirectX::XMMatrixMultiply(minv, head_);
 	}
 #else
 	head_ = DirectX::XMMatrixLookAtLH({0.f, 0.75f, -2.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 1.f, 0.f});
