@@ -21,7 +21,7 @@
 #include "loading.hpp"
 
 /* override USE_OVR configuration */
-//#define DUMMY_OVR
+#define DUMMY_OVR
 
 #if defined(USE_OVR)
 #include <openvr.h>
@@ -173,6 +173,9 @@ public:
 
     void set_viewport(float w, float h, float znear, float zfar);
     void set_shadowpass(bool shadowpass) { shadowpass_ = shadowpass; }
+
+	void update_projection(uniq_device_t& u);
+	void update_view(uniq_device_t& u);
 };
 
 class stereo_t : public appbase_t {
